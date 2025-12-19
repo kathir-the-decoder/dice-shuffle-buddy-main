@@ -31,6 +31,7 @@ const Index = () => {
   const [showResult, setShowResult] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [isAdminVerified, setIsAdminVerified] = useState(false);
+  const [myName, setMyName] = useState("");
 
   // Subscribe to Firebase real-time updates
   useEffect(() => {
@@ -52,7 +53,9 @@ const Index = () => {
     return () => unsubscribe();
   }, []);
 
-  // Check if kathir has joined
+  // Check if current user is admin (kathir)
+  const isCurrentUserAdmin = myName.toLowerCase() === "kathir";
+  // Check if kathir has joined (for waiting message)
   const adminJoined = players.some((p) => p.toLowerCase() === "kathir");
 
   // Perfect derangement - each person gives to exactly one other person
@@ -95,6 +98,7 @@ const Index = () => {
     if (trimmedName && !isDuplicate && players.length < MAX_PLAYERS) {
       soundEffects.playAdd();
       const newPlayers = [...players, trimmedName];
+      setMyName(trimmedName); // Remember who I am
       setCurrentInput("");
       await syncToFirebase(newPlayers, pairs, gamePhase, isAdminVerified);
     }
@@ -272,8 +276,8 @@ const Index = () => {
                   )}
                 </motion.div>
 
-                {/* Shuffle Button - Only visible when kathir joined */}
-                {adminJoined && (
+                {/* Shuffle Button - Only visible to kathir */}
+                {isCurrentUserAdmin && (
                   <motion.div className="glass-card p-6 text-center">
                     <p className="text-muted-foreground mb-4">
                       {players.length < 2
@@ -300,10 +304,10 @@ const Index = () => {
                 )}
 
                 {/* Message for non-admin users */}
-                {!adminJoined && players.length >= 2 && (
+                {!isCurrentUserAdmin && myName && players.length >= 2 && (
                   <motion.div className="glass-card p-6 text-center">
                     <p className="text-muted-foreground">
-                      Waiting for admin (kathir) to start the shuffle...
+                      Waiting for admin to start the shuffle...
                     </p>
                   </motion.div>
                 )}

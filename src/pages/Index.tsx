@@ -272,60 +272,30 @@ const Index = () => {
                   )}
                 </motion.div>
 
-                {/* Shuffle Button - Only visible when Angel joined */}
+                {/* Shuffle Button - Only visible when kathir joined */}
                 {adminJoined && (
                   <motion.div className="glass-card p-6 text-center">
-                    {!isAdminVerified ? (
-                      <>
-                        <p className="text-muted-foreground mb-4">
-                          Admin: Enter "kathir" to unlock shuffle
-                        </p>
-                        <div className="flex gap-3 mb-4">
-                          <input
-                            type="text"
-                            value={adminPassword}
-                            onChange={(e) => setAdminPassword(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleAdminVerify();
-                            }}
-                            placeholder="Enter admin name"
-                            className="input-glass flex-1"
-                          />
-                          <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={handleAdminVerify}
-                            className="btn-secondary px-4"
-                          >
-                            Verify
-                          </motion.button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-muted-foreground mb-4">
-                          {players.length < 2
-                            ? `Need at least ${2 - players.length} more player${
-                                2 - players.length > 1 ? "s" : ""
-                              }`
-                            : "All players joined? Let's shuffle!"}
-                        </p>
-                        <motion.button
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={startShuffle}
-                          disabled={players.length < 2}
-                          className={`btn-primary w-full flex items-center justify-center gap-3 ${
-                            players.length < 2
-                              ? "opacity-50 cursor-not-allowed"
-                              : ""
-                          }`}
-                        >
-                          <Shuffle size={24} />
-                          Shuffle & Assign!
-                        </motion.button>
-                      </>
-                    )}
+                    <p className="text-muted-foreground mb-4">
+                      {players.length < 2
+                        ? `Need at least ${2 - players.length} more player${
+                            2 - players.length > 1 ? "s" : ""
+                          }`
+                        : "All players joined? Let's shuffle!"}
+                    </p>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={startShuffle}
+                      disabled={players.length < 2}
+                      className={`btn-primary w-full flex items-center justify-center gap-3 ${
+                        players.length < 2
+                          ? "opacity-50 cursor-not-allowed"
+                          : ""
+                      }`}
+                    >
+                      <Shuffle size={24} />
+                      Shuffle & Assign!
+                    </motion.button>
                   </motion.div>
                 )}
 

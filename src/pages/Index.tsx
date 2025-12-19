@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Gift, Shuffle, TreePine, Users, UserPlus, Eye } from "lucide-react";
+import { Gift, Shuffle, TreePine, Users, UserPlus, Eye, RotateCcw } from "lucide-react";
 import SnowflakeBackground from "@/components/SnowflakeBackground";
 import ShuffleReveal from "@/components/ShuffleReveal";
 import PairResults from "@/components/PairResults";
@@ -31,7 +31,17 @@ const Index = () => {
   const [showResult, setShowResult] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [isAdminVerified, setIsAdminVerified] = useState(false);
-  const [myName, setMyName] = useState("");
+  const [myName, setMyName] = useState(() => {
+    // Load from localStorage on init
+    return localStorage.getItem("secretSantaMyName") || "";
+  });
+
+  // Save myName to localStorage when it changes
+  useEffect(() => {
+    if (myName) {
+      localStorage.setItem("secretSantaMyName", myName);
+    }
+  }, [myName]);
 
   // Subscribe to Firebase real-time updates
   useEffect(() => {
@@ -131,6 +141,8 @@ const Index = () => {
 
   const handleReset = async () => {
     await resetGame();
+    localStorage.removeItem("secretSantaMyName");
+    setMyName("");
     setRevealName("");
     setShowResult(false);
     setCurrentInput("");
@@ -300,6 +312,15 @@ const Index = () => {
                       <Shuffle size={24} />
                       Shuffle & Assign!
                     </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleReset}
+                      className="btn-secondary w-full flex items-center justify-center gap-3 mt-3"
+                    >
+                      <RotateCcw size={20} />
+                      New Game
+                    </motion.button>
                   </motion.div>
                 )}
 
@@ -309,6 +330,24 @@ const Index = () => {
                     <p className="text-muted-foreground">
                       Waiting for admin to start the shuffle...
                     </p>
+                  </motion.div>
+                )}
+
+                {/* New Game button - shows when there are players but user hasn't joined */}
+                {players.length > 0 && !myName && (
+                  <motion.div className="glass-card p-6 text-center">
+                    <p className="text-muted-foreground mb-4">
+                      A game is already in progress. Start fresh?
+                    </p>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleReset}
+                      className="btn-secondary w-full flex items-center justify-center gap-3"
+                    >
+                      <RotateCcw size={20} />
+                      New Game
+                    </motion.button>
                   </motion.div>
                 )}
               </motion.div>

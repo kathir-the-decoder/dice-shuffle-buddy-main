@@ -1,10 +1,16 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Gift, Shuffle, TreePine, Users, UserPlus, Eye } from "lucide-react";
 import SnowflakeBackground from "@/components/SnowflakeBackground";
 import ShuffleReveal from "@/components/ShuffleReveal";
 import PairResults from "@/components/PairResults";
 import { soundEffects } from "@/lib/soundEffects";
+import {
+  updateGameState,
+  subscribeToGameState,
+  resetGame,
+  GameState,
+} from "@/lib/firebase";
 
 interface Pair {
   giver: string;
@@ -23,100 +29,64 @@ const Index = () => {
   const [gamePhase, setGamePhase] = useState<GamePhase>("joining");
   const [revealName, setRevealName] = useState("");
   const [showResult, setShowResult] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [isAdminVerified, setIsAdminVerified] = useState(false);
 
-  // Get past pairings from localStorage
-  const getPastPairings = (): Set<string> => {
-    try {
-      const stored = localStorage.getItem("secretSantaHistory");
-      if (stored) {
-        return new Set(JSON.parse(stored));
+  // Subscribe to Firebase real-time updates
+  useEffect(() => {
+    const unsubscribe = subscribeToGameState((state: GameState | null) => {
+      if (state) {
+        setPlayers(state.players || []);
+        setPairs(state.pairs || null);
+        setGamePhase(state.gamePhase || "joining");
+        setIsAdminVerified(state.isAdminVerified || false);
+      } else {
+        // No game state exists, initialize
+        setPlayers([]);
+        setPairs(null);
+        setGamePhase("joining");
+        setIsAdminVerified(false);
       }
-    } catch {
-      // ignore errors
-    }
-    return new Set();
-  };
-
-  // Save pairings to localStorage (both directions)
-  const savePairings = (newPairs: Pair[]) => {
-    const history = getPastPairings();
-    newPairs.forEach((pair) => {
-      const g = pair.giver.toLowerCase();
-      const r = pair.receiver.toLowerCase();
-      // Store BOTH directions - so they can never be paired again in either direction
-      history.add(`${g}<->${r}`);
-      history.add(`${r}<->${g}`);
     });
-    localStorage.setItem("secretSantaHistory", JSON.stringify([...history]));
-  };
 
-  // Check if two people were ever paired before (in either direction)
-  const wasPairedBefore = (giver: string, receiver: string): boolean => {
-    const history = getPastPairings();
-    const g = giver.toLowerCase();
-    const r = receiver.toLowerCase();
-    // Check both directions
-    return history.has(`${g}<->${r}`) || history.has(`${r}<->${g}`);
-  };
+    return () => unsubscribe();
+  }, []);
 
-  // Reciprocal pairing - if A gives to B, then B gives to A
-  // Creates mutual pairs, no repeat pairings from history
-  // Only works with even number of players
+  // Check if kathir has joined
+  const adminJoined = players.some((p) => p.toLowerCase() === "kathir");
+
+  // Perfect derangement - each person gives to exactly one other person
   const createSecretSantaPairs = (participants: string[]): Pair[] => {
-    const maxAttempts = 100;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const shuffled = [...participants];
-
-      // Fisher-Yates shuffle
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-
-      const pairs: Pair[] = [];
-      let valid = true;
-
-      // Create reciprocal pairs (2 people exchange with each other)
-      for (let i = 0; i < shuffled.length; i += 2) {
-        const person1 = shuffled[i];
-        const person2 = shuffled[i + 1];
-
-        // Check if this pair was used before
-        if (wasPairedBefore(person1, person2)) {
-          valid = false;
-          break;
-        }
-
-        // Add both directions
-        pairs.push({ giver: person1, receiver: person2 });
-        pairs.push({ giver: person2, receiver: person1 });
-      }
-
-      if (valid) {
-        savePairings(pairs);
-        return pairs;
-      }
-    }
-
-    // Fallback if we couldn't avoid repeats
     const shuffled = [...participants];
+
+    // Fisher-Yates shuffle
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
-    const pairs: Pair[] = [];
-    for (let i = 0; i < shuffled.length; i += 2) {
-      pairs.push({ giver: shuffled[i], receiver: shuffled[i + 1] });
-      pairs.push({ giver: shuffled[i + 1], receiver: shuffled[i] });
-    }
-
-    savePairings(pairs);
-    return pairs;
+    return shuffled.map((giver, i) => ({
+      giver,
+      receiver: shuffled[(i + 1) % shuffled.length],
+    }));
   };
 
-  const handleJoin = () => {
+  // Sync state to Firebase
+  const syncToFirebase = async (
+    newPlayers: string[],
+    newPairs: Pair[] | null,
+    newPhase: GamePhase,
+    newAdminVerified: boolean
+  ) => {
+    await updateGameState({
+      players: newPlayers,
+      pairs: newPairs,
+      gamePhase: newPhase,
+      isAdminVerified: newAdminVerified,
+    });
+  };
+
+  const handleJoin = async () => {
     const trimmedName = currentInput.trim();
     const isDuplicate = players.some(
       (p) => p.toLowerCase() === trimmedName.toLowerCase()
@@ -124,28 +94,24 @@ const Index = () => {
 
     if (trimmedName && !isDuplicate && players.length < MAX_PLAYERS) {
       soundEffects.playAdd();
-      setPlayers([...players, trimmedName]);
+      const newPlayers = [...players, trimmedName];
       setCurrentInput("");
+      await syncToFirebase(newPlayers, pairs, gamePhase, isAdminVerified);
     }
   };
 
   const startShuffle = () => {
-    // Only allow shuffle with even number of players (minimum 2)
-    if (players.length < 2 || players.length % 2 !== 0) return;
+    if (players.length < 2) return;
     soundEffects.playShuffle();
     soundEffects.playUnwrap();
     setShowCountdown(true);
   };
 
-  // Check if shuffle is allowed (even number of players, minimum 2)
-  const canShuffle = players.length >= 2 && players.length % 2 === 0;
-
-  const handleShuffleComplete = useCallback(() => {
+  const handleShuffleComplete = useCallback(async () => {
     setShowCountdown(false);
     const newPairs = createSecretSantaPairs(players);
-    setPairs(newPairs);
-    setGamePhase("reveal");
-  }, [players]);
+    await syncToFirebase(players, newPairs, "reveal", isAdminVerified);
+  }, [players, isAdminVerified]);
 
   const handleReveal = () => {
     if (revealName.trim() && pairs) {
@@ -159,18 +125,23 @@ const Index = () => {
     }
   };
 
-  const handleReset = () => {
-    setPlayers([]);
-    setPairs(null);
-    setGamePhase("joining");
+  const handleReset = async () => {
+    await resetGame();
     setRevealName("");
     setShowResult(false);
     setCurrentInput("");
+    setAdminPassword("");
   };
 
   const handleBackToReveal = () => {
     setRevealName("");
     setShowResult(false);
+  };
+
+  const handleAdminVerify = async () => {
+    if (adminPassword.toLowerCase() === "kathir") {
+      await syncToFirebase(players, pairs, gamePhase, true);
+    }
   };
 
   const isAdmin = revealName.trim().toLowerCase() === "kathir";
@@ -301,30 +272,71 @@ const Index = () => {
                   )}
                 </motion.div>
 
-                {/* Shuffle Button */}
-                <motion.div className="glass-card p-6 text-center">
-                  <p className="text-muted-foreground mb-4">
-                    {players.length < 2
-                      ? `Need at least ${2 - players.length} more player${
-                          2 - players.length > 1 ? "s" : ""
-                        }`
-                      : players.length % 2 !== 0
-                      ? "Need even number of players to shuffle!"
-                      : "All players joined? Let's shuffle!"}
-                  </p>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={startShuffle}
-                    disabled={!canShuffle}
-                    className={`btn-primary w-full flex items-center justify-center gap-3 ${
-                      !canShuffle ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
-                  >
-                    <Shuffle size={24} />
-                    Shuffle & Assign!
-                  </motion.button>
-                </motion.div>
+                {/* Shuffle Button - Only visible when Angel joined */}
+                {adminJoined && (
+                  <motion.div className="glass-card p-6 text-center">
+                    {!isAdminVerified ? (
+                      <>
+                        <p className="text-muted-foreground mb-4">
+                          Admin: Enter "kathir" to unlock shuffle
+                        </p>
+                        <div className="flex gap-3 mb-4">
+                          <input
+                            type="text"
+                            value={adminPassword}
+                            onChange={(e) => setAdminPassword(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleAdminVerify();
+                            }}
+                            placeholder="Enter admin name"
+                            className="input-glass flex-1"
+                          />
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleAdminVerify}
+                            className="btn-secondary px-4"
+                          >
+                            Verify
+                          </motion.button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-muted-foreground mb-4">
+                          {players.length < 2
+                            ? `Need at least ${2 - players.length} more player${
+                                2 - players.length > 1 ? "s" : ""
+                              }`
+                            : "All players joined? Let's shuffle!"}
+                        </p>
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={startShuffle}
+                          disabled={players.length < 2}
+                          className={`btn-primary w-full flex items-center justify-center gap-3 ${
+                            players.length < 2
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                          }`}
+                        >
+                          <Shuffle size={24} />
+                          Shuffle & Assign!
+                        </motion.button>
+                      </>
+                    )}
+                  </motion.div>
+                )}
+
+                {/* Message for non-admin users */}
+                {!adminJoined && players.length >= 2 && (
+                  <motion.div className="glass-card p-6 text-center">
+                    <p className="text-muted-foreground">
+                      Waiting for admin (kathir) to start the shuffle...
+                    </p>
+                  </motion.div>
+                )}
               </motion.div>
             )}
 

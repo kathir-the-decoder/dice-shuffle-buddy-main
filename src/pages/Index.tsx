@@ -24,23 +24,96 @@ const Index = () => {
   const [revealName, setRevealName] = useState("");
   const [showResult, setShowResult] = useState(false);
 
-  // Perfect derangement - each person gives to exactly one other person
-  // and receives from exactly one person (no self, no duplicates)
-  const createSecretSantaPairs = (participants: string[]): Pair[] => {
-    const shuffled = [...participants];
+  // Get past pairings from localStorage
+  const getPastPairings = (): Set<string> => {
+    try {
+      const stored = localStorage.getItem("secretSantaHistory");
+      if (stored) {
+        return new Set(JSON.parse(stored));
+      }
+    } catch {
+      // ignore errors
+    }
+    return new Set();
+  };
 
-    // Fisher-Yates shuffle
+  // Save pairings to localStorage (both directions)
+  const savePairings = (newPairs: Pair[]) => {
+    const history = getPastPairings();
+    newPairs.forEach((pair) => {
+      const g = pair.giver.toLowerCase();
+      const r = pair.receiver.toLowerCase();
+      // Store BOTH directions - so they can never be paired again in either direction
+      history.add(`${g}<->${r}`);
+      history.add(`${r}<->${g}`);
+    });
+    localStorage.setItem("secretSantaHistory", JSON.stringify([...history]));
+  };
+
+  // Check if two people were ever paired before (in either direction)
+  const wasPairedBefore = (giver: string, receiver: string): boolean => {
+    const history = getPastPairings();
+    const g = giver.toLowerCase();
+    const r = receiver.toLowerCase();
+    // Check both directions
+    return history.has(`${g}<->${r}`) || history.has(`${r}<->${g}`);
+  };
+
+  // Reciprocal pairing - if A gives to B, then B gives to A
+  // Creates mutual pairs, no repeat pairings from history
+  // Only works with even number of players
+  const createSecretSantaPairs = (participants: string[]): Pair[] => {
+    const maxAttempts = 100;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const shuffled = [...participants];
+
+      // Fisher-Yates shuffle
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      const pairs: Pair[] = [];
+      let valid = true;
+
+      // Create reciprocal pairs (2 people exchange with each other)
+      for (let i = 0; i < shuffled.length; i += 2) {
+        const person1 = shuffled[i];
+        const person2 = shuffled[i + 1];
+
+        // Check if this pair was used before
+        if (wasPairedBefore(person1, person2)) {
+          valid = false;
+          break;
+        }
+
+        // Add both directions
+        pairs.push({ giver: person1, receiver: person2 });
+        pairs.push({ giver: person2, receiver: person1 });
+      }
+
+      if (valid) {
+        savePairings(pairs);
+        return pairs;
+      }
+    }
+
+    // Fallback if we couldn't avoid repeats
+    const shuffled = [...participants];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
-    // Create circular assignment: each person gives to the next in shuffled order
-    // This guarantees: no self-assignment, each person gives once, each receives once
-    return shuffled.map((giver, i) => ({
-      giver,
-      receiver: shuffled[(i + 1) % shuffled.length],
-    }));
+    const pairs: Pair[] = [];
+    for (let i = 0; i < shuffled.length; i += 2) {
+      pairs.push({ giver: shuffled[i], receiver: shuffled[i + 1] });
+      pairs.push({ giver: shuffled[i + 1], receiver: shuffled[i] });
+    }
+
+    savePairings(pairs);
+    return pairs;
   };
 
   const handleJoin = () => {
@@ -57,11 +130,15 @@ const Index = () => {
   };
 
   const startShuffle = () => {
-    if (players.length < 2) return;
+    // Only allow shuffle with even number of players (minimum 2)
+    if (players.length < 2 || players.length % 2 !== 0) return;
     soundEffects.playShuffle();
     soundEffects.playUnwrap();
     setShowCountdown(true);
   };
+
+  // Check if shuffle is allowed (even number of players, minimum 2)
+  const canShuffle = players.length >= 2 && players.length % 2 === 0;
 
   const handleShuffleComplete = useCallback(() => {
     setShowCountdown(false);
@@ -231,15 +308,17 @@ const Index = () => {
                       ? `Need at least ${2 - players.length} more player${
                           2 - players.length > 1 ? "s" : ""
                         }`
+                      : players.length % 2 !== 0
+                      ? "Need even number of players to shuffle!"
                       : "All players joined? Let's shuffle!"}
                   </p>
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={startShuffle}
-                    disabled={players.length < 2}
+                    disabled={!canShuffle}
                     className={`btn-primary w-full flex items-center justify-center gap-3 ${
-                      players.length < 2 ? "opacity-50 cursor-not-allowed" : ""
+                      !canShuffle ? "opacity-50 cursor-not-allowed" : ""
                     }`}
                   >
                     <Shuffle size={24} />

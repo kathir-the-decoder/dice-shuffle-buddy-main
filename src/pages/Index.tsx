@@ -24,28 +24,22 @@ const Index = () => {
   const [revealName, setRevealName] = useState("");
   const [showResult, setShowResult] = useState(false);
 
-  // Fisher-Yates shuffle that ensures no one gets themselves
+  // Perfect derangement - each person gives to exactly one other person
+  // and receives from exactly one person (no self, no duplicates)
   const createSecretSantaPairs = (participants: string[]): Pair[] => {
-    const givers = [...participants];
-    let receivers = [...participants];
+    const shuffled = [...participants];
 
-    let attempts = 0;
-    do {
-      receivers = [...participants].sort(() => Math.random() - 0.5);
-      attempts++;
-    } while (
-      givers.some((giver, i) => giver === receivers[i]) &&
-      attempts < 100
-    );
-
-    if (givers.some((giver, i) => giver === receivers[i])) {
-      receivers = [...participants];
-      receivers.push(receivers.shift()!);
+    // Fisher-Yates shuffle
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
-    return givers.map((giver, i) => ({
+    // Create circular assignment: each person gives to the next in shuffled order
+    // This guarantees: no self-assignment, each person gives once, each receives once
+    return shuffled.map((giver, i) => ({
       giver,
-      receiver: receivers[i],
+      receiver: shuffled[(i + 1) % shuffled.length],
     }));
   };
 
